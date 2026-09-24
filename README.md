@@ -82,14 +82,12 @@ see [Performance](#performance).
 
 ### Option A: ComfyUI Manager / Comfy Registry
 
-Once published, search for "ASASR" in ComfyUI Manager, or install it with
+Search for "ASASR" in ComfyUI Manager, or install it with
 [comfy-cli](https://docs.comfy.org/comfy-cli/getting-started):
 
 ```bash
 comfy node install comfyui-asasr
 ```
-
-(Not yet published — use the manual method below in the meantime.)
 
 ### Option B: Manual
 

@@ -1,0 +1,9 @@
+# Development-only files; not shipped in the Comfy Registry package.
+tests/
+conftest.py
+requirements-dev.txt
+scripts/
+# Vendored diffusers reference implementation, used only by the parity tests.
+# asasr/vendor/LICENSE stays in the package.
+asasr/vendor/__init__.py
+asasr/vendor/flux/

@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-asasr"
-version = "1.0.0"
+version = "1.0.1"
 description = "ASASR 4x diffusion super-resolution (FLUX.1-dev dual-LoRA) for ComfyUI, with native fp8/GGUF support. Non-commercial (CC-BY-NC-4.0 weights)."
 license = { file = "LICENSE" }
 readme = "README.md"

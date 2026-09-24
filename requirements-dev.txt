@@ -1,0 +1,21 @@
+-r requirements.txt
+# Reference implementation (asasr/vendor) used only by the parity tests
+diffusers>=0.30
+peft>=0.11
+sentencepiece
+protobuf
+torch
+torchvision
+transformers>=4.40
+accelerate>=0.30
+safetensors
+numpy
+Pillow
+pytest
+# ComfyUI runtime deps (for .dev/ComfyUI imports in tests)
+einops
+torchsde
+psutil
+pyyaml
+comfy-aimdo>=0.4.13
+comfy-kitchen==0.2.26  # comfy.ldm.flux.math apply_rope needs it at the pinned commit

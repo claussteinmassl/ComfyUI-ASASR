@@ -1,0 +1,21 @@
+[project]
+name = "comfyui-asasr"
+version = "1.0.0"
+description = "ASASR 4x diffusion super-resolution (FLUX.1-dev dual-LoRA) for ComfyUI, with native fp8/GGUF support. Non-commercial (CC-BY-NC-4.0 weights)."
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
+dependencies = ["huggingface_hub"]
+
+[project.urls]
+Repository = "https://github.com/claussteinmassl/ComfyUI-ASASR"
+Documentation = "https://github.com/claussteinmassl/ComfyUI-ASASR#readme"
+"Bug Tracker" = "https://github.com/claussteinmassl/ComfyUI-ASASR/issues"
+
+[tool.comfy]
+PublisherId = "claussteinmassl"
+DisplayName = "ComfyUI-ASASR"

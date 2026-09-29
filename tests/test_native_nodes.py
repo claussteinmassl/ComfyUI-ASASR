@@ -53,12 +53,12 @@ def _fake_diffusion_model(*, double_blocks=True, guidance_embed=True):
     return types.SimpleNamespace(**kwargs)
 
 
-def _fake_model_patcher(diffusion_model=None):
+def _fake_model_patcher(diffusion_model=None, dtype=torch.float32):
     inner = types.SimpleNamespace(
         latent_format=_FakeLatentFormat(),
         diffusion_model=diffusion_model or _fake_diffusion_model(),
         manual_cast_dtype=None,
-        get_dtype=lambda: torch.float32,
+        get_dtype=lambda: dtype,
         model_config=types.SimpleNamespace(unet_config={
             "depth": 2, "depth_single_blocks": 2, "hidden_size": 64}),
     )
@@ -73,7 +73,7 @@ def test_input_types_and_registration():
                 "tile_size", "tile_overlap", "color_fix", "auto_download"):
         assert key in req, key
     assert req["model"][0] == "MODEL"
-    assert req["steps"][1]["default"] == 28
+    assert req["steps"][1]["default"] == 16
     assert "ASASRUpscale" in nn.NATIVE_NODE_CLASS_MAPPINGS
 
 
@@ -99,6 +99,26 @@ def test_upscale_orchestration_with_stubs():
     assert out.shape == (1, 400, 520, 3)
     assert calls["tiles"] == 2
     assert calls["seeds"] == [7, 8]
+
+
+@pytest.mark.parametrize("model_dtype, store_dtype", [
+    (torch.bfloat16, torch.bfloat16),
+    (torch.float16, torch.float32),
+    (torch.float32, torch.float32),
+])
+def test_delta_store_dtype_follows_bf16_compute(model_dtype, store_dtype):
+    """bf16 models get a bf16 delta store; everything else keeps fp32."""
+    nn = _import_native_nodes()
+    with mock.patch.object(nn, "_load_store_cached", return_value=mock.MagicMock()) as load, \
+         mock.patch.object(nn, "_denoise_tile", return_value=torch.full((512, 512, 3), 0.5)), \
+         mock.patch.object(nn, "_load_model", return_value=None):
+        nn.ASASRUpscale().upscale(
+            model=_fake_model_patcher(dtype=model_dtype), clip=_FakeCLIP(), vae=_FakeVAE(),
+            image=torch.rand(1, 64, 64, 3), steps=4, guidance=3.5, seed=0,
+            sr_lora_scale=1.0, dpo_lora_scale=1.0, condition_scale=1.0,
+            tile_size=128, tile_overlap=16, color_fix="none", auto_download=False,
+        )
+    assert load.call_args.args[3] == store_dtype
 
 
 def test_upscale_runs_tiles_in_inference_mode():

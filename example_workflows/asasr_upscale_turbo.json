@@ -1,6 +1,6 @@
 {
-  "last_node_id": 6,
-  "last_link_id": 5,
+  "last_node_id": 8,
+  "last_link_id": 6,
   "nodes": [
     {
       "id": 1,
@@ -64,15 +64,45 @@
       "widgets_values": ["ae.safetensors"]
     },
     {
-      "id": 5,
-      "type": "ASASRUpscale",
-      "pos": [420, 200],
-      "size": [340, 360],
+      "id": 7,
+      "type": "LoraLoaderModelOnly",
+      "pos": [420, 560],
+      "size": [340, 82],
       "flags": {},
       "order": 4,
       "mode": 0,
       "inputs": [
-        {"name": "model", "type": "MODEL", "link": 2},
+        {"name": "model", "type": "MODEL", "link": 2}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [6], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
+      "widgets_values": ["FLUX.1-Turbo-Alpha.safetensors", 1.0]
+    },
+    {
+      "id": 8,
+      "type": "Note",
+      "pos": [420, 200],
+      "size": [340, 300],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": ["Fast mode with FLUX.1-Turbo-Alpha\n\nThe Turbo LoRA lets ASASR run with 6 steps instead of the default 16 at comparable quality (more than 2x faster with bf16 or fp8 checkpoints).\n\nDownload diffusion_pytorch_model.safetensors from alimama-creative/FLUX.1-Turbo-Alpha on Hugging Face and save it as models/loras/FLUX.1-Turbo-Alpha.safetensors.\n\nOnly the Turbo LoRA goes through a LoRA loader. The ASASR LoRAs are applied inside the ASASR node; never load them with a LoRA loader."]
+    },
+    {
+      "id": 5,
+      "type": "ASASRUpscale",
+      "pos": [800, 200],
+      "size": [340, 360],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 6},
         {"name": "clip", "type": "CLIP", "link": 3},
         {"name": "vae", "type": "VAE", "link": 4},
         {"name": "image", "type": "IMAGE", "link": 1}
@@ -81,15 +111,15 @@
         {"name": "image", "type": "IMAGE", "links": [5], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "ASASRUpscale"},
-      "widgets_values": [16, 3.5, 0, "fixed", 1.0, 1.0, 1.0, 128, 16, "adain", true]
+      "widgets_values": [6, 3.5, 0, "fixed", 1.0, 1.0, 1.0, 128, 16, "adain", true]
     },
     {
       "id": 6,
       "type": "SaveImage",
-      "pos": [820, 200],
+      "pos": [1200, 200],
       "size": [320, 270],
       "flags": {},
-      "order": 5,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 5}
@@ -101,10 +131,11 @@
   ],
   "links": [
     [1, 1, 0, 5, 3, "IMAGE"],
-    [2, 2, 0, 5, 0, "MODEL"],
+    [2, 2, 0, 7, 0, "MODEL"],
     [3, 3, 0, 5, 1, "CLIP"],
     [4, 4, 0, 5, 2, "VAE"],
-    [5, 5, 0, 6, 0, "IMAGE"]
+    [5, 5, 0, 6, 0, "IMAGE"],
+    [6, 7, 0, 5, 0, "MODEL"]
   ],
   "groups": [],
   "config": {},

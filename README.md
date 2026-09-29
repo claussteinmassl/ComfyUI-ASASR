@@ -39,12 +39,14 @@ together. A global color-fix pass (AdaIN or wavelet) corrects for drift
 against a bicubic reference of the whole image.
 
 This is a research-grade port of an academic model. Expect it to be slow —
-each 128px tile takes a full 28-step diffusion pass.
+each 128px tile takes a full 16-step diffusion pass. For more than twice
+the speed at comparable quality, add the FLUX.1-Turbo-Alpha LoRA and run 6
+steps; see [Fast mode](#fast-mode-flux1-turbo-alpha).
 
 ## Results
 
 All examples below were produced end to end through the ComfyUI API with
-the default settings (28 steps, guidance 3.5, `tile_size` 128,
+the 1.0 default settings (28 steps, guidance 3.5, `tile_size` 128,
 `tile_overlap` 16, `color_fix` adain). Inputs are images from the Kodak
 Lossless True Color Image Suite, downscaled 4× with bicubic filtering, so
 the original image serves as ground truth.
@@ -67,6 +69,43 @@ a faithful reconstruction of the original.
 
 The bf16, fp8 and GGUF Q8 variants produce visually equivalent results;
 see [Performance](#performance).
+
+## Fast mode (FLUX.1-Turbo-Alpha)
+
+[FLUX.1-Turbo-Alpha](https://huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha)
+is a step-distillation LoRA for FLUX.1-dev. Loaded with a normal
+`LoraLoaderModelOnly` in front of the ASASR node, it lets ASASR run with
+**6 steps instead of 16**, 2.3–2.4x faster with bf16 or fp8 checkpoints
+(see [Performance](#performance)):
+
+1. Download `diffusion_pytorch_model.safetensors` from
+   [alimama-creative/FLUX.1-Turbo-Alpha](https://huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha)
+   and save it as `models/loras/FLUX.1-Turbo-Alpha.safetensors`.
+2. Open [`example_workflows/asasr_upscale_turbo.json`](example_workflows/asasr_upscale_turbo.json)
+   (UNETLoader → LoraLoaderModelOnly at strength 1.0 → ASASR Upscale with
+   `steps` 6).
+
+Crops from 4× upscales of Kodak images (192×128 inputs); top row: original
+and bicubic, bottom row: ASASR with the Turbo LoRA at 6 steps and without it
+at the default 16 steps:
+
+![Parrot: ground truth, bicubic, ASASR with Turbo LoRA (6 steps), ASASR without LoRA (16 steps)](docs/images/kodim23_turbo_grid.jpg)
+
+![Hair: ground truth, bicubic, ASASR with Turbo LoRA (6 steps), ASASR without LoRA (16 steps)](docs/images/kodim15_turbo_grid.jpg)
+
+![Cap lettering: ground truth, bicubic, ASASR with Turbo LoRA (6 steps), ASASR without LoRA (16 steps)](docs/images/kodim03_turbo_grid.jpg)
+
+Notes:
+
+- On heavily degraded inputs (blur, noise, JPEG) 6 steps held up in our
+  tests; 4 steps is faster still but occasionally shows small artifacts,
+  and 3 or fewer degrades visibly.
+- Other speed-up LoRAs did not work as well: Hyper-FLUX.1-dev 8-step adds
+  noticeably more invented detail, and the TDD LoRA produced broken output.
+- Switching to a different sampler (res_multistep, DPM++ 2M, DEIS, UniPC)
+  gave no benefit over the built-in Euler sampler at equal step counts.
+- FLUX.1-Turbo-Alpha is itself released under the FLUX.1-dev
+  non-commercial license.
 
 ## Requirements
 
@@ -159,7 +198,7 @@ Takes an image batch and returns a 4x upscaled batch (`IMAGE` → `IMAGE`).
 | `clip` | CLIP | — | From DualCLIPLoader (`clip_l` + `t5xxl`, type `flux`). Used only to encode the empty text prompt — ASASR conditions on the LR image, not on text. |
 | `vae` | VAE | — | From VAELoader, the FLUX `ae.safetensors`. |
 | `image` | IMAGE | — | Batch of images to upscale. |
-| `steps` | INT | `28` (range 1–100) | Diffusion steps per tile. |
+| `steps` | INT | `16` (range 1–100) | Diffusion steps per tile. 16 matches the upstream 28 steps closely at about half the time; use 6 with [Fast mode](#fast-mode-flux1-turbo-alpha). |
 | `guidance` | FLOAT | `3.5` (range 0.0–20.0, step 0.1) | Classifier-free guidance scale. |
 | `seed` | INT | `0` | Base seed; each tile uses a deterministic offset seed, so results are reproducible per batch and per tile layout. |
 | `sr_lora_scale` | FLOAT | `1.0` (range 0.0–2.0, step 0.05) | Scale of the internally-applied SR LoRA delta. See [ASASR LoRAs are applied internally](#asasr-loras-are-applied-internally-not-via-a-lora-loader) below. |
@@ -184,14 +223,20 @@ to the OminiControl condition branch.
 > Let `sr_lora_scale` / `dpo_lora_scale` on this node control the adapter
 > strength instead.
 
+Other FLUX.1-dev LoRAs that are meant to change the base model, such as
+the FLUX.1-Turbo-Alpha step-distillation LoRA used in
+[Fast mode](#fast-mode-flux1-turbo-alpha), *do* go through a normal LoRA
+loader in front of this node.
+
 ### Memory management
 
 Model loading and offloading is entirely ComfyUI's own
 (`load_models_gpu`) — the model behaves like any other model in a ComfyUI
 workflow and is subject to ComfyUI's normal VRAM management and "Free
 model and node cache" behavior. In addition to the loaded FLUX model, the
-node keeps one LoRA delta store resident on the compute device, roughly
-~2.1 GB in fp32.
+node keeps one LoRA delta store resident on the compute device: about
+1 GB in bf16 (bf16, fp8 and GGUF checkpoints), or about 2.1 GB in fp32
+when the model computes in fp16 or fp32.
 
 ### Known deviations from upstream
 
@@ -223,30 +268,41 @@ suite.
 ## Performance
 
 Measured on an NVIDIA RTX PRO 6000 Blackwell (96 GB) with ComfyUI
-`b5cc883`, PyTorch 2.14 / CUDA 13.0, default settings (28 steps,
-`tile_size` 128). Every variant ran in a fresh ComfyUI process; VRAM is
-the device-wide peak reported by `nvidia-smi`, including the text encoders
-and VAE.
+`a716932`, PyTorch 2.14 / CUDA 13.0, `tile_size` 128, by running the two
+shipped example workflows through the ComfyUI API. Every variant ran in a
+fresh ComfyUI process; VRAM is the device-wide peak reported by
+`nvidia-smi`, including the text encoders and VAE.
 
-| Checkpoint | Time per tile | 768×512 output (2 tiles) | 1536×1024 output (12 tiles) | Peak VRAM |
-| --- | --- | --- | --- | --- |
-| FLUX.1-dev bf16 | 5.5 s | 11.3 s | 65.4 s | 35.3 GB |
-| FLUX.1-dev fp8 (e4m3fn) | 7.0 s | 14.3 s | 83.6 s | 24.6 GB |
-| FLUX.1-dev GGUF Q8_0 | 8.5 s | 17.4 s | 101.9 s | 25.1 GB |
+| Checkpoint | Mode | Time per tile | 768×512 output (2 tiles) | 1536×1024 output (12 tiles) | Peak VRAM |
+| --- | --- | --- | --- | --- | --- |
+| FLUX.1-dev bf16 | default, 16 steps | 2.7 s | 5.4 s | 30.4 s | 34.4 GB |
+| FLUX.1-dev bf16 | Turbo LoRA, 6 steps | 1.1 s | 2.3 s | 13.1 s | 34.5 GB |
+| FLUX.1-dev fp8 (e4m3fn) | default, 16 steps | 3.6 s | 7.2 s | 40.9 s | 23.5 GB |
+| FLUX.1-dev fp8 (e4m3fn) | Turbo LoRA, 6 steps | 1.5 s | 3.0 s | 17.1 s | 23.5 GB |
+| FLUX.1-dev GGUF Q8_0 | default, 16 steps | 4.4 s | 8.9 s | 51.0 s | 24.1 GB |
+| FLUX.1-dev GGUF Q8_0 | Turbo LoRA, 6 steps | 3.9 s | 7.9 s | 45.8 s | 25.1 GB |
 
 Times are for a warm model; the first run after starting ComfyUI adds
-roughly 10–20 s of model loading. Runtime scales linearly with the number
-of tiles.
+model loading (and, on the very first run, the ASASR LoRA download).
+Runtime scales linearly with the number of tiles and with `steps`.
 
-- **Quality:** all three variants produce visually equivalent output. The
-  bf16 variant matches the upstream `diffusers` reference implementation
-  up to bf16 rounding.
+- **Compared with 1.0:** the 1.0 default of 28 steps took 5.5 s per tile
+  (bf16). 1.1 halves that with 16 steps and computes the ASASR LoRA deltas
+  in bf16 instead of fp32 (about 20% faster per step, identical output).
+- **Quality:** 16 steps are visually indistinguishable from 28 on our test
+  images, and the bf16, fp8 and GGUF variants produce visually equivalent
+  output. The bf16 variant matches the upstream `diffusers` reference
+  implementation up to bf16 rounding.
 - **fp8 saves memory, not time:** on this GPU the fp8 weights are cast
   per layer during the forward pass, so fp8 is slower than bf16.
-- **Smaller GPUs:** with ComfyUI limited to a 24 GB budget
-  (`--reserve-vram 72` on the 96 GB card) the fp8 and GGUF variants ran
-  at unchanged speed, and fp8 also stayed within a 16 GB budget. These
-  were simulated limits on a large card, not tests on real 16/24 GB GPUs.
+- **Turbo LoRA with GGUF:** ComfyUI-GGUF applies LoRAs on the fly in every
+  forward pass, which eats most of the saving from fewer steps. Use bf16 or
+  fp8 for [Fast mode](#fast-mode-flux1-turbo-alpha).
+- **Smaller GPUs:** in the 1.0 measurements, with ComfyUI limited to a
+  24 GB budget (`--reserve-vram 72` on the 96 GB card), the fp8 and GGUF
+  variants ran at unchanged speed, and fp8 also stayed within a 16 GB
+  budget. These were simulated limits on a large card, not tests on real
+  16/24 GB GPUs.
 
 ## Tiling
 
@@ -290,8 +346,14 @@ ASASR Upscale (4x) → SaveImage) is included at
 
 ![Example workflow: Load Image and the FLUX.1-dev model, CLIP and VAE loaders feed ASASR Upscale (4x), whose output goes to Save Image](docs/images/example_workflow.png)
 
-Load it in ComfyUI via **Workflow → Open** (or drag the file onto the
-canvas). Once the node pack is installed, it also appears in ComfyUI's
+A second graph,
+[`example_workflows/asasr_upscale_turbo.json`](example_workflows/asasr_upscale_turbo.json),
+adds a `LoraLoaderModelOnly` with FLUX.1-Turbo-Alpha between the UNETLoader
+and the ASASR node and runs 6 steps (see
+[Fast mode](#fast-mode-flux1-turbo-alpha)).
+
+Load them in ComfyUI via **Workflow → Open** (or drag the file onto the
+canvas). Once the node pack is installed, both also appear in ComfyUI's
 template browser under ComfyUI-ASASR. Swap the `UNETLoader` node for
 ComfyUI-GGUF's `UnetLoaderGGUF` to use a GGUF-quantized checkpoint.
 
@@ -321,7 +383,9 @@ itself.
   StableSR's color-fix implementation by Li Yi —
   [pkuliyi2015/sd-webui-stablesr](https://github.com/pkuliyi2015/sd-webui-stablesr/blob/master/srmodule/colorfix.py).
 - **Example images**: Kodak Lossless True Color Image Suite
-  (`kodim03`, `kodim08`, `kodim23`), released by Eastman Kodak for
-  unrestricted use.
+  (`kodim03`, `kodim08`, `kodim15`, `kodim23`), released by Eastman Kodak
+  for unrestricted use.
+- **FLUX.1-Turbo-Alpha** (optional Fast mode LoRA): Alimama Creative —
+  [huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha](https://huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha).
 - **FLUX.1-dev**: Black Forest Labs —
   [huggingface.co/black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).

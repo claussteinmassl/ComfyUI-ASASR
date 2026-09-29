@@ -164,7 +164,7 @@ class ASASRUpscale:
                 "clip": ("CLIP",),
                 "vae": ("VAE",),
                 "image": ("IMAGE",),
-                "steps": ("INT", {"default": 28, "min": 1, "max": 100}),
+                "steps": ("INT", {"default": 16, "min": 1, "max": 100}),
                 "guidance": ("FLOAT", {"default": 3.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
                 "sr_lora_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
@@ -221,8 +221,11 @@ class ASASRUpscale:
         inner = model.model
         device = model.load_device
         dtype = inner.manual_cast_dtype or inner.get_dtype()
+        # bf16 deltas are ~20% faster than fp32 at identical output quality;
+        # other compute dtypes (fp16/fp32) keep the fp32 store for headroom.
+        store_dtype = torch.bfloat16 if dtype == torch.bfloat16 else torch.float32
         store = _load_store_cached(
-            auto_download, inner.model_config.unet_config, device, torch.float32)
+            auto_download, inner.model_config.unet_config, device, store_dtype)
 
         # CLIP.encode_from_tokens loads its own patcher via load_models_gpu,
         # which may evict the FLUX model -- load FLUX only after this call.

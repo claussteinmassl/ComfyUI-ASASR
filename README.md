@@ -352,10 +352,13 @@ adds a `LoraLoaderModelOnly` with FLUX.1-Turbo-Alpha between the UNETLoader
 and the ASASR node and runs 6 steps (see
 [Fast mode](#fast-mode-flux1-turbo-alpha)).
 
+![Turbo example workflow: the Load Diffusion Model output passes through Load LoRA with FLUX.1-Turbo-Alpha before ASASR Upscale (4x), which runs 6 steps](docs/images/example_workflow_turbo.png)
+
 Load them in ComfyUI via **Workflow → Open** (or drag the file onto the
-canvas). Once the node pack is installed, both also appear in ComfyUI's
-template browser under ComfyUI-ASASR. Swap the `UNETLoader` node for
-ComfyUI-GGUF's `UnetLoaderGGUF` to use a GGUF-quantized checkpoint.
+canvas). Once the node pack is installed, both also appear, with preview
+thumbnails, in ComfyUI's template browser under ComfyUI-ASASR. Swap the
+`UNETLoader` node for ComfyUI-GGUF's `UnetLoaderGGUF` to use a
+GGUF-quantized checkpoint.
 
 ## License
 
